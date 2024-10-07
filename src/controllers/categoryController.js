@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
-const Category = require('../models/category'); // Import Category model
-const { v4: uuidv4 } = require('uuid');
+const Category = require('../models/category');
+const { uploadImage } = require('../utils/imageUpload'); 
 const axios = require('axios');
+const { successResponse, errorResponse } = require('../utils/responseHelper');
 
 class CategoryController {
 
@@ -10,36 +11,20 @@ class CategoryController {
     createCategory = async (req, res) => {
         try {
             if (!req.files || !req.files.image) {
-                return res.status(400).json({ message: 'No image file uploaded' });
+                return errorResponse(res, 400, 'No image file uploaded');
             }
 
-            const imageFile = req.files.image;
             const uploadFolder = path.join(__dirname, '../../uploads/categories');
+            const imagePath = await uploadImage(req.files.image, uploadFolder);
 
-            if (!fs.existsSync(uploadFolder)) {
-                fs.mkdirSync(uploadFolder, { recursive: true });
-            }
-
-            const uniqueFileName = `${uuidv4()}_${imageFile.name}`;
-            const imagePath = path.join(uploadFolder, uniqueFileName);
-
-            imageFile.mv(imagePath, async (err) => {
-                if (err) {
-                    return res.status(500).json({ message: 'Image upload failed', error: err });
-                }
-
-                const category = await Category.create({
-                    name: req.body.name,
-                    image: `/uploads/categories/${uniqueFileName}`, 
-                });
-
-                return res.status(201).json({
-                    message: 'Category created successfully',
-                    category,
-                });
+            const category = await Category.create({
+                name: req.body.name,
+                image: imagePath, 
             });
+
+            return successResponse(res, 201, 'Category created successfully', category);
         } catch (error) {
-            return res.status(500).json({ message: 'Error creating category', error : error.message  });
+            return errorResponse(res, 500, 'Error creating category', error.message);
         }
     };
 
@@ -47,12 +32,9 @@ class CategoryController {
     getAllCategories = async (req, res) => {
         try {
             const categories = await Category.find();
-            return res.status(200).json({
-                message: 'Categories fetched successfully',
-                categories,
-            });
+            return successResponse(res, 200, 'Categories fetched successfully', categories);
         } catch (error) {
-            return res.status(500).json({ message: 'Error fetching categories', error : error.message  });
+            return errorResponse(res, 500, 'Error fetching categories', error.message);
         }
     };
 
@@ -63,36 +45,22 @@ class CategoryController {
             const category = await Category.findById(categoryId);
 
             if (!category) {
-                return res.status(404).json({ message: 'Category not found' });
+                return errorResponse(res, 404, 'Category not found');
             }
 
             let imagePath = category.image; 
 
             if (req.files && req.files.image) {
-                const imageFile = req.files.image;
                 const uploadFolder = path.join(__dirname, '../../uploads/categories');
+                imagePath = await uploadImage(req.files.image, uploadFolder);
 
-                if (!fs.existsSync(uploadFolder)) {
-                    fs.mkdirSync(uploadFolder, { recursive: true });
+                // Delete old image if it exists
+                if (category.image) {
+                    const oldImagePath = path.join(__dirname, '../../', category.image);
+                    if (fs.existsSync(oldImagePath)) {
+                        fs.unlinkSync(oldImagePath);
+                    }
                 }
-
-                const uniqueFileName = `${uuidv4()}_${imageFile.name}`;
-                imagePath = path.join(uploadFolder, uniqueFileName);
-
-                imageFile.mv(imagePath, async (err) => {
-                    if (err) {
-                        return res.status(500).json({ message: 'Image upload failed', error: err });
-                    }
-
-                    if (category.image) {
-                        const oldImagePath = path.join(__dirname, '../../', category.image);
-                        if (fs.existsSync(oldImagePath)) {
-                            fs.unlinkSync(oldImagePath);
-                        }
-                    }
-                });
-
-                imagePath = `/uploads/categories/${uniqueFileName}`; 
             }
 
             category.name = req.body.name || category.name;
@@ -100,12 +68,9 @@ class CategoryController {
 
             await category.save();
 
-            return res.status(200).json({
-                message: 'Category updated successfully',
-                category,
-            });
+            return successResponse(res, 200, 'Category updated successfully', category);
         } catch (error) {
-            return res.status(500).json({ message: 'Error updating category', error : error.message  });
+            return errorResponse(res, 500, 'Error updating category', error.message);
         }
     };
 
@@ -116,7 +81,7 @@ class CategoryController {
             const category = await Category.findById(categoryId);
 
             if (!category) {
-                return res.status(404).json({ message: 'Category not found' });
+                return errorResponse(res, 404, 'Category not found');
             }
 
             if (category.image) {
@@ -128,29 +93,21 @@ class CategoryController {
 
             await Category.findByIdAndDelete(categoryId);
 
-            return res.status(200).json({
-                message: 'Category deleted successfully',
-            });
+            return successResponse(res, 200, 'Category deleted successfully');
         } catch (error) {
-            return res.status(500).json({ message: 'Error deleting category', error : error.message });
+            return errorResponse(res, 500, 'Error deleting category', error.message);
         }
     };
 
-    //Fetch Products from Third Party API
+    // Fetch Products from Third Party API
     fetchProduct = async (req, res) => {
         try {
             const apiUrl = 'https://fakestoreapi.com/products/';
             const response = await axios.get(apiUrl);
 
-            return res.status(200).json({
-                message: 'Data fetched successfully',
-                data: response.data
-            });
+            return successResponse(res, 200, 'Data fetched successfully', response.data);
         } catch (error) {
-            return res.status(500).json({
-                message: 'Error fetching data',
-                error: error.message
-            });
+            return errorResponse(res, 500, 'Error fetching data', error.message);
         }
     };
 }
